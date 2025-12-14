@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepShield - Home</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="theme-root">
+  <nav class="sidebar">
+    <div class="brand">DeepShield</div>
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/dashboard">Dashboard</a></li>
+      <li><a href="/login">Login</a></li>
+    </ul>
+  </nav>
+  <main class="main">
+    <header class="topbar">
+      <h1>Analyze image or video</h1>
+      <div class="upload">
+        <form id="uploadForm" enctype="multipart/form-data">
+          <input type="file" name="file" id="fileInput">
+          <button type="submit">Upload & Analyze</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="cards">
+      <div class="card" id="resultCard">
+        <h3>Prediction</h3>
+        <div id="resultArea">No result yet</div>
+      </div>
+
+      <div class="card">
+        <h3>Metrics</h3>
+        <canvas id="rocChart" width="400" height="200"></canvas>
+        <div id="metricsText"></div>
+      </div>
+    </section>
+  </main>
+
+<script>
+const form = document.getElementById('uploadForm');
+form.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const fileInput = document.getElementById('fileInput');
+  if (!fileInput.files.length) return alert('Choose file');
+  const fd = new FormData();
+  fd.append('file', fileInput.files[0]);
+  const res = await fetch('/upload', {method:'POST', body:fd});
+  const data = await res.json();
+  document.getElementById('resultArea').innerText = JSON.stringify(data, null, 2);
+});
+
+async function refreshMetrics(){
+  const res = await fetch('/metrics');
+  const body = await res.json();
+  if (body.message) {
+    document.getElementById('metricsText').innerText = body.message;
+    return;
+  }
+  document.getElementById('metricsText').innerText = `Accuracy: ${body.accuracy.toFixed(3)}, F1: ${body.f1.toFixed(3)} AUC: ${body.roc.auc.toFixed(3)}`;
+  // draw roc
+  const ctx = document.getElementById('rocChart').getContext('2d');
+  if (window.rocChart) window.rocChart.destroy();
+  window.rocChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: body.roc.fpr.map((v,i)=>i),
+      datasets: [{
+        label: `ROC AUC ${body.roc.auc.toFixed(3)}`,
+        data: body.roc.tpr,
+        fill: false,
+        tension: 0.2
+      }]
+    },
+    options: {scales:{x:{title:{display:true,text:'FPR'}}, y:{title:{display:true,text:'TPR'}}}}
+  });
+}
+
+// refresh periodically
+setInterval(refreshMetrics, 5000);
+refreshMetrics();
+</script>
+</body>
+</html>

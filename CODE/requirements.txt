@@ -1,0 +1,14 @@
+Flask
+flask-login
+
+# Updated to a version supported on your Python + Windows
+torch
+torchvision
+torchaudio
+
+opencv-python
+Pillow
+scikit-learn
+matplotlib
+numpy
+werkzeug
