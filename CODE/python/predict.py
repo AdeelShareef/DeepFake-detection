@@ -2,53 +2,72 @@ import sys
 import json
 import os
 
-# --- REAL IMPLEMENTATION (Uncomment if you have libraries installed) ---
 import torch
 import torch.nn as nn
-from torchvision import transforms
+from torchvision import models, transforms
 from PIL import Image
 
-# Define your Model Class exactly as it was trained
+# ------------------ MODEL DEFINITION ------------------
 class DeepShieldModel(nn.Module):
     def __init__(self):
-        super(DeepShieldModel, self).__init__()
-        # ... layers ...
+        super().__init__()
+        self.model = models.xception(pretrained=False)
+        self.model.fc = nn.Linear(self.model.fc.in_features, 2)
 
-def predict_real(image_path):
-    model = torch.load('python/deepshield_xceptio.pth')
+    def forward(self, x):
+        return self.model(x)
+
+# ------------------ LOAD MODEL ------------------
+def load_model():
+    model_path = os.path.join(os.path.dirname(__file__), "best_model.pth")
+
+    model = DeepShieldModel()
+    state = torch.load(model_path, map_location="cpu")
+    model.load_state_dict(state)
     model.eval()
-    # ... transform image and predict ...
-    return "REAL", "0.98"
-    pass
+    return model
 
-# --- SIMULATION MODE (For Web Project Testing) ---
-# Since connecting PyTorch to XAMPP can be tricky with paths,
-# this ensures your website works for the presentation even if 
-# the model libraries fail to load.
+# ------------------ IMAGE TRANSFORM ------------------
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
 
-# def predict_simulation(image_path):
-#     # Simple logic: If filename contains 'fake', call it Fake.
-#     filename = os.path.basename(image_path).lower()
-    
-#     if "fake" in filename or "manipulated" in filename:
-#         return "FAKE", "98.5%"
-#     else:
-#         return "REAL", "94.2%"
+# ------------------ PREDICTION ------------------
+def predict(image_path):
+    model = load_model()
 
-# --- MAIN EXECUTION ---
+    image = Image.open(image_path).convert("RGB")
+    image = transform(image).unsqueeze(0)
+
+    with torch.no_grad():
+        outputs = model(image)
+        probs = torch.softmax(outputs, dim=1)
+        conf, pred = torch.max(probs, 1)
+
+    label = "REAL" if pred.item() == 0 else "FAKE"
+
+    return label, round(conf.item() * 100, 2)
+
+# ------------------ MAIN ------------------
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        image_path = sys.argv[1]
-        
-        # Switch to predict_real(image_path) when ready
-        label, conf = predict_real(image_path)
-        
-        output = {
-            "result": label,
-            "confidence": conf
-        }
-        
-        # Return JSON to PHP
-        print(json.dumps(output))
-    else:
-        print(json.dumps({"result": "ERROR", "confidence": "0.0"}))
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "No image path provided"}))
+        sys.exit(1)
+
+    image_path = sys.argv[1]
+
+    if not os.path.exists(image_path):
+        print(json.dumps({"error": "Image not found"}))
+        sys.exit(1)
+
+    result, confidence = predict(image_path)
+
+    print(json.dumps({
+        "result": result,
+        "confidence": confidence
+    }))
